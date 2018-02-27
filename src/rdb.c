@@ -34,6 +34,7 @@
 #include "stream.h"
 
 #include <math.h>
+#include <sched.h>
 #include <sys/types.h>
 #include <sys/time.h>
 #include <sys/resource.h>
@@ -1340,6 +1341,9 @@ int rdbSaveBackground(char *filename, rdbSaveInfo *rsi) {
         /* Child */
         closeListeningSockets(0);
         redisSetProcTitle("redis-rdb-bgsave");
+        if (server.bgsave_cpu_set != NULL) {
+          sched_setaffinity(0, sizeof(cpu_set_t), server.bgsave_cpu_set);
+        }
         retval = rdbSave(filename,rsi);
         if (retval == C_OK) {
             size_t private_dirty = zmalloc_get_private_dirty(-1);
