@@ -32,6 +32,8 @@
 #include "cluster.h"
 
 #include <fcntl.h>
+#include <sched.h>
+#include <string.h>
 #include <sys/stat.h>
 
 /*-----------------------------------------------------------------------------
@@ -140,6 +142,86 @@ int yesnotoi(char *s) {
     if (!strcasecmp(s,"yes")) return 1;
     else if (!strcasecmp(s,"no")) return 0;
     else return -1;
+}
+
+int parseCPUSet(char *s, cpu_set_t *set) {
+  int cpu = 0;
+  char *p;
+
+  CPU_ZERO(set);
+
+  // Skip a leading 0x.
+  if (strlen(s) >= 2 && !memcmp(s, "0x", 2)) {
+    s += 2;
+  }
+
+  for (p = s + strlen(s) - 1; p >= s; p--) {
+    char c = *p;
+    int val;
+    // Skip any separating commas.
+    if (c == ',') {
+      continue;
+    }
+
+    if (c >= '0' && c <= '9') {
+      val = c - '0';
+    } else if (c >= 'a' && c <= 'f') {
+      val = c + (10 - 'a');
+    } else if (c >= 'A' && c <= 'F') {
+      val = c + (10 - 'A');
+    } else {
+      return -1;
+    }
+
+    if (val & 1) CPU_SET(cpu + 0, set);
+    if (val & 2) CPU_SET(cpu + 1, set);
+    if (val & 4) CPU_SET(cpu + 2, set);
+    if (val & 8) CPU_SET(cpu + 3, set);
+
+    cpu += 4;
+  }
+
+  return 0;
+}
+
+sds catCPUSet(sds s, cpu_set_t *set) {
+  int max = -1;
+  sds s1;
+  int nchars;
+
+  if (set == NULL) {
+    return s;
+  }
+
+  for (int i = 0; i < CPU_SETSIZE; i++) {
+    if (CPU_ISSET(i, set)) {
+      max = i;
+    }
+  }
+  if (max == -1) {
+    return sdscat(s, "0x0");
+  }
+
+  s = sdscat(s, "0x");
+  nchars = (max>>2) + 1;
+  s1 = sdsnewlen(NULL, nchars);
+  for (int i = 0; i < nchars; i++) {
+    char val = 0;
+    int cpu = (nchars-i-1) << 2;
+
+    if (CPU_ISSET(cpu + 0, set)) val |= 1;
+    if (CPU_ISSET(cpu + 1, set)) val |= 2;
+    if (CPU_ISSET(cpu + 2, set)) val |= 4;
+    if (CPU_ISSET(cpu + 3, set)) val |= 8;
+
+    if (val < 10) {
+      val += '0';
+    } else {
+      val += ('a' - 10);
+    }
+    s1[i] = val;
+  }
+  return sdscatsds(s, s1);
 }
 
 void appendServerSaveParams(time_t seconds, int changes) {
@@ -673,6 +755,18 @@ void loadServerConfigFromString(char *config) {
             server.client_obuf_limits[class].hard_limit_bytes = hard;
             server.client_obuf_limits[class].soft_limit_bytes = soft;
             server.client_obuf_limits[class].soft_limit_seconds = soft_seconds;
+        } else if (!strcasecmp(argv[0], "bgsave-cpu-mask") && argc == 2) {
+          cpu_set_t set;
+          if (strlen(argv[1]) == 0) {
+            zfree(server.bgsave_cpu_set);
+            server.bgsave_cpu_set = NULL;
+          } else if (parseCPUSet(argv[1], &set) != 0) {
+            err = "Bad CPU mask"; goto loaderr;
+          } else {
+            zfree(server.bgsave_cpu_set);
+            server.bgsave_cpu_set = zmalloc(sizeof(cpu_set_t));
+            memcpy(server.bgsave_cpu_set, &set, sizeof(cpu_set_t));
+          }
         } else if (!strcasecmp(argv[0],"stop-writes-on-bgsave-error") &&
                    argc == 2) {
             if ((server.stop_writes_on_bgsave_err = yesnotoi(argv[1])) == -1) {
@@ -986,6 +1080,20 @@ void configSetCommand(client *c) {
     } config_set_special_field("slave-announce-ip") {
         zfree(server.slave_announce_ip);
         server.slave_announce_ip = ((char*)o->ptr)[0] ? zstrdup(o->ptr) : NULL;
+    } config_set_special_field("bgsave-cpu-mask") {
+      cpu_set_t set;
+      if (strlen(o->ptr) == 0) {
+        zfree(server.bgsave_cpu_set);
+        server.bgsave_cpu_set = NULL;
+        return;
+      }
+      if (parseCPUSet(o->ptr, &set) != 0) {
+        addReplyError(c,"Bad CPU mask");
+        return;
+      }
+      zfree(server.bgsave_cpu_set);
+      server.bgsave_cpu_set = zmalloc(sizeof(cpu_set_t));
+      memcpy(server.bgsave_cpu_set, &set, sizeof(cpu_set_t));
 
     /* Boolean fields.
      * config_set_bool_field(name,var). */
@@ -1369,6 +1477,14 @@ void configGetCommand(client *c) {
         sdsfree(buf);
         matches++;
     }
+    if (stringmatch(pattern,"bgsave-cpu-mask",1)) {
+      sds buf = sdsempty();
+      buf = catCPUSet(buf, server.bgsave_cpu_set);
+      addReplyBulkCString(c,"bgsave-cpu-mask");
+      addReplyBulkCString(c,buf);
+      sdsfree(buf);
+      matches++;
+    }
     if (stringmatch(pattern,"client-output-buffer-limit",1)) {
         sds buf = sdsempty();
         int j;
@@ -1729,6 +1845,19 @@ void rewriteConfigSaveOption(struct rewriteConfigState *state) {
     rewriteConfigMarkAsProcessed(state,"save");
 }
 
+/* Rewrite the bgsave-cpu-mask option. */
+void rewriteConfigBgsaveCPUMaskOption(struct rewriteConfigState *state) {
+  char *option = "bgsave-cpu-mask";
+  sds buf;
+  if (server.bgsave_cpu_set == NULL) {
+    rewriteConfigMarkAsProcessed(state,option);
+    return;
+  }
+  buf = sdsempty();
+  buf = catCPUSet(buf, server.bgsave_cpu_set);
+  rewriteConfigStringOption(state,option,buf,NULL);
+}
+
 /* Rewrite the dir option, always using absolute paths.*/
 void rewriteConfigDirOption(struct rewriteConfigState *state) {
     char cwd[1024];
@@ -1978,6 +2107,7 @@ int rewriteConfig(char *path) {
     rewriteConfigSyslogfacilityOption(state);
     rewriteConfigSaveOption(state);
     rewriteConfigNumericalOption(state,"databases",server.dbnum,CONFIG_DEFAULT_DBNUM);
+    rewriteConfigBgsaveCPUMaskOption(state);
     rewriteConfigYesNoOption(state,"stop-writes-on-bgsave-error",server.stop_writes_on_bgsave_err,CONFIG_DEFAULT_STOP_WRITES_ON_BGSAVE_ERROR);
     rewriteConfigYesNoOption(state,"rdbcompression",server.rdb_compression,CONFIG_DEFAULT_RDB_COMPRESSION);
     rewriteConfigYesNoOption(state,"rdbchecksum",server.rdb_checksum,CONFIG_DEFAULT_RDB_CHECKSUM);
