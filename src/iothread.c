@@ -709,7 +709,7 @@ void *IOThreadMain(void *ptr) {
     char thdname[16];
     snprintf(thdname, sizeof(thdname), "io_thd_%d", t->id);
     redis_set_thread_title(thdname);
-    redisSetCpuAffinity(server.server_cpulist);
+    redisSetCpuAffinity(server.io_cpulist);
     makeThreadKillable();
     aeSetBeforeSleepProc(t->el, IOThreadBeforeSleep);
     aeSetAfterSleepProc(t->el, IOThreadAfterSleep);

@@ -581,10 +581,12 @@ start_server {tags {"introspection"}} {
             slaveof
             requirepass
             server-cpulist
+            io-cpulist
             bio-cpulist
             aof-rewrite-cpulist
             bgsave-cpulist
             server_cpulist
+            io_cpulist
             bio_cpulist
             aof_rewrite_cpulist
             bgsave_cpulist
