@@ -7992,6 +7992,7 @@ int main(int argc, char **argv) {
     }
     InitServerLast();
 
+    redisSetCpuAffinity(server.server_cpulist);
     if (!server.sentinel_mode) {
         /* Things not needed when running in Sentinel mode. */
         serverLog(LL_NOTICE,"Server initialized");
@@ -8038,7 +8039,6 @@ int main(int argc, char **argv) {
         serverLog(LL_WARNING,"WARNING: You specified a maxmemory value that is less than 1MB (current value is %llu bytes). Are you sure this is what you really want?", server.maxmemory);
     }
 
-    redisSetCpuAffinity(server.server_cpulist);
     setOOMScoreAdj(-1);
 
     aeMain(server.el);
