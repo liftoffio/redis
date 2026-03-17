@@ -176,7 +176,7 @@ void _serverLog(int level, const char *fmt, ...) {
     serverLogRaw(level,msg);
 }
 
-/* Low level logging from signal handler. Should be used with pre-formatted strings. 
+/* Low level logging from signal handler. Should be used with pre-formatted strings.
    See serverLogFromHandler. */
 void serverLogRawFromHandler(int level, const char *msg) {
     int fd;
@@ -264,7 +264,7 @@ mstime_t commandTimeSnapshot(void) {
 /* After an RDB dump or AOF rewrite we exit from children using _exit() instead of
  * exit(), because the latter may interact with the same file objects used by
  * the parent process. However if we are testing the coverage normal exit() is
- * used in order to obtain the right coverage information. 
+ * used in order to obtain the right coverage information.
  * There is a caveat for when we exit due to a signal.
  * In this case we want the function to be async signal safe, so we can't use exit()
  */
@@ -320,12 +320,12 @@ int dictCompareKV(dictCmpCache *cache, const void *kv1, const void *kv2) {
     if (cache->useCache == 0) {
         cache->useCache = 1;
         cache->data[0].p = kvobjGetKey((kvobj *) kv1);
-        cache->data[1].sz = sdslen((sds) cache->data[0].p); 
+        cache->data[1].sz = sdslen((sds) cache->data[0].p);
     }
-        
+
     sds key1 = cache->data[0].p;
     sds key2 = kvobjGetKey((kvobj *) kv2);
-    int l1 = (int) cache->data[1].sz; 
+    int l1 = (int) cache->data[1].sz;
     int l2 = sdslen((sds)key2);
     if (l1 != l2) return 0;
     return memcmp(key1, key2, l1) == 0;
@@ -722,7 +722,7 @@ dictType clientDictType = {
     NULL,                       /* val dup */
     dictClientKeyCompare,       /* key compare */
     .no_value = 1,              /* no values in this dict */
-    .keys_are_odd = 0           /* a client pointer is not an odd pointer */            
+    .keys_are_odd = 0           /* a client pointer is not an odd pointer */
 };
 
 /* This function is called once a background process of some kind terminates,
@@ -1613,7 +1613,7 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
      * a higher frequency. */
     run_with_period(1000) {
         if ((server.aof_state == AOF_ON || server.aof_state == AOF_WAIT_REWRITE) &&
-            server.aof_last_write_status == C_ERR) 
+            server.aof_last_write_status == C_ERR)
             {
                 flushAppendOnlyFile(0);
             }
@@ -1623,8 +1623,8 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
     updatePausedActions();
 
     /* Replication cron function -- used to reconnect to master,
-     * detect transfer failures, start background RDB transfers and so forth. 
-     * 
+     * detect transfer failures, start background RDB transfers and so forth.
+     *
      * If Redis is trying to failover then run the replication cron faster so
      * progress on the handshake happens more quickly. */
     if (server.failover_state != NO_FAILOVER) {
@@ -1839,7 +1839,7 @@ void beforeSleep(struct aeEventLoop *eventLoop) {
      * processUnblockedClients(), so if there are multiple pipelined WAITs
      * and the just unblocked WAIT gets blocked again, we don't have to wait
      * a server cron cycle in absence of other event loop events. See #6623.
-     * 
+     *
      * We also don't send the ACKs while clients are paused, since it can
      * increment the replication backlog, they'll be sent after the pause
      * if we are still the master. */
@@ -1849,7 +1849,7 @@ void beforeSleep(struct aeEventLoop *eventLoop) {
     }
 
     /* We may have received updates from clients about their current offset. NOTE:
-     * this can't be done where the ACK is received since failover will disconnect 
+     * this can't be done where the ACK is received since failover will disconnect
      * our clients. */
     updateFailoverStatus();
 
@@ -4396,12 +4396,12 @@ int processCommand(client *c) {
 
     /* If the server is paused, block the client until
      * the pause has ended. Replicas are never paused. */
-    if (!(c->flags & CLIENT_SLAVE) && 
+    if (!(c->flags & CLIENT_SLAVE) &&
         ((isPausedActions(PAUSE_ACTION_CLIENT_ALL)) ||
         ((isPausedActions(PAUSE_ACTION_CLIENT_WRITE)) && is_may_replicate_command)))
     {
         blockPostponeClient(c);
-        return C_OK;       
+        return C_OK;
     }
 
     /* Exec the command */
@@ -6471,7 +6471,7 @@ sds genRedisInfoString(dict *section_dict, int all_sections, int everything) {
     if (all_sections || (dictFind(section_dict,"keysizes") != NULL)) {
         if (sections++) info = sdscat(info,"\r\n");
         info = sdscatprintf(info, "# Keysizes\r\n");
-        
+
         char *typestr[] = {
             [OBJ_STRING] = "distrib_strings_sizes",
             [OBJ_LIST] = "distrib_lists_items",
@@ -6480,7 +6480,7 @@ sds genRedisInfoString(dict *section_dict, int all_sections, int everything) {
             [OBJ_HASH] = "distrib_hashes_items"
         };
         serverAssert(sizeof(typestr)/sizeof(typestr[0]) == OBJ_TYPE_BASIC_MAX);
-        
+
         for (int dbnum = 0; dbnum < server.dbnum; dbnum++) {
             char *expSizeLabels[] = {
                 "0", "1",   "2",  "4",  "8",  "16",  "32",  "64",  "128",  "256",  "512", /* Byte */
@@ -6491,10 +6491,10 @@ sds genRedisInfoString(dict *section_dict, int all_sections, int everything) {
                 "1P", "2P", "4P", "8P", "16P", "32P", "64P", "128P", "256P", "512P", /* Peta */
                 "1E", "2E", "4E"                                               /* Exa */
             };
-                                 
+
             if (kvstoreSize(server.db[dbnum].keys) == 0)
                 continue;
-            
+
             for (int type = 0; type < OBJ_TYPE_BASIC_MAX; type++) {
                 int64_t *kvstoreHist = kvstoreGetMetadata(server.db[dbnum].keys)->keysizes_hist[type];
                 char buf[10000];
@@ -6504,11 +6504,11 @@ sds genRedisInfoString(dict *section_dict, int all_sections, int everything) {
                 buflen += snprintf(buf + buflen, sizeof(buf) - buflen, "db%d_%s:", dbnum, typestr[type]);
 
                 for (int i = 0; i < MAX_KEYSIZES_BINS; i++) {
-                    if (kvstoreHist[i] == 0) 
+                    if (kvstoreHist[i] == 0)
                         continue;
-                    
+
                     int res = snprintf(buf + buflen, sizeof(buf) - buflen,
-                                       (cnt == 0) ? "%s=%llu" : ",%s=%llu", 
+                                       (cnt == 0) ? "%s=%llu" : ",%s=%llu",
                                        expSizeLabels[i], (unsigned long long) kvstoreHist[i]);
                     if (res < 0) break;
                     buflen += res;
@@ -7610,6 +7610,7 @@ int main(int argc, char **argv) {
     }
     InitServerLast();
 
+    redisSetCpuAffinity(server.server_cpulist);
     if (!server.sentinel_mode) {
         /* Things not needed when running in Sentinel mode. */
         serverLog(LL_NOTICE,"Server initialized");
@@ -7655,7 +7656,6 @@ int main(int argc, char **argv) {
         serverLog(LL_WARNING,"WARNING: You specified a maxmemory value that is less than 1MB (current value is %llu bytes). Are you sure this is what you really want?", server.maxmemory);
     }
 
-    redisSetCpuAffinity(server.server_cpulist);
     setOOMScoreAdj(-1);
 
     aeMain(server.el);
