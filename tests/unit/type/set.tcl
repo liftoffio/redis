@@ -71,7 +71,7 @@ start_server {
         r del zmscoretest
         r zadd zmscoretest 10 x
         r zadd zmscoretest 20 y
-        
+
         catch {r smismember zmscoretest} e
         assert_match {*ERR*wrong*number*arg*} $e
     }
@@ -1026,7 +1026,22 @@ foreach type {single multiple single_multiple} {
                 break
             }
         }
-        r srem $myset {*}$members
+        r deferred 1
+        set count 0
+        foreach m $members {
+            r srem $myset $m
+            incr count
+            if {$count == 500} {
+                for {set i 0} {$i < 500} {incr i} {
+                    r read
+                }
+                set count 0
+            }
+        }
+        for {set i 0} {$i < $count} {incr i} {
+            r read
+        }
+        r deferred 0
     }
 
     proc verify_rehashing_completed_key {myset table_size keys} {
@@ -1105,7 +1120,7 @@ foreach type {single multiple single_multiple} {
         #    otherwise we would need more iterations.
         rem_hash_set_top_N myset [expr {[r scard myset] - 30}]
         assert_equal [r scard myset] 30
-        
+
         # Hash set rehashing would be completed while removing members from the `myset`
         # We also check the size and members in the hash table.
         verify_rehashing_completed_key myset 64 30
